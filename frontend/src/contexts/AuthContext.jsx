@@ -2,8 +2,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const AuthContext = createContext(null);
-
-// Backend URL from environment variables
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
 
 /*
@@ -19,35 +17,34 @@ export const AuthProvider = ({ children }) => {
     const navigate = useNavigate();
     const [user, setUser] = useState(null);
 
-    // Check for token and fetch user data on component mount (handles hard reloads)
     useEffect(() => {
-        const fetchUserData = async () => {
-            const token = localStorage.getItem('token');
-            if (token) {
-                try {
-                    const response = await fetch(`${BACKEND_URL}/user/me`, {
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        }
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        setUser(data.user);
-                    } else {
-                        // Token is invalid, clear it
-                        localStorage.removeItem('token');
-                        setUser(null);
+        const storedToken = localStorage.getItem('token');
+        if (!storedToken) return;
+        
+        const getUserProfile = async () => {
+            try {
+                const userResponse = await fetch(`${BACKEND_URL}/user/me`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${storedToken}`
                     }
-                } catch (error) {
-                    console.error('Error fetching user data:', error);
-                    localStorage.removeItem('token');
+                });
+                if (userResponse.status === 200) {
+                    const profileData = await userResponse.json();
+                    setUser(profileData.user);
+                } else {
+                    console.warn('token invalid');
+                    localStorage.clear();
                     setUser(null);
                 }
+            } catch (err) {
+                localStorage.removeItem('token');
+                setUser(null);
             }
         };
-
-        fetchUserData();
+        
+        // Execute the profile retrieval function
+        getUserProfile();
     }, []);
 
     /*
@@ -56,13 +53,8 @@ export const AuthProvider = ({ children }) => {
      * @remarks This function will always navigate to "/".
      */
     const logout = () => {
-        // Remove the token from localStorage
-        localStorage.removeItem('token');
-        
-        // Update the user state to null
         setUser(null);
-        
-        // Navigate to the home page
+        localStorage.removeItem('token');
         navigate("/");
     };
 
@@ -83,36 +75,25 @@ export const AuthProvider = ({ children }) => {
                 },
                 body: JSON.stringify({ username, password })
             });
+            if (!response.ok) return 'unsuccessful login';
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                return data.message || 'Login failed';
-            }
-
-            // Store the token in localStorage
+            const data = await response.json();            
             localStorage.setItem('token', data.token);
-
-            // Fetch user data to update context
-            const userResponse = await fetch(`${BACKEND_URL}/user/me`, {
+            const res = await fetch(`${BACKEND_URL}/user/me`, {
                 headers: {
                     'Authorization': `Bearer ${data.token}`
                 }
             });
-
-            if (userResponse.ok) {
-                const userData = await userResponse.json();
+            if (res.ok) {
+                const userData = await res.json();
                 setUser(userData.user);
-                
-                // Navigate to profile page
                 navigate('/profile');
                 return null;
             } else {
-                return 'Failed to fetch user data';
+                return 'user data not fetched';
             }
         } catch (error) {
-            console.error('Login error:', error);
-            return 'An error occurred during login';
+            return 'error during login';
         }
     };
 
@@ -133,18 +114,11 @@ export const AuthProvider = ({ children }) => {
                 body: JSON.stringify(userData)
             });
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                return data.message || 'Registration failed';
-            }
-
-            // Navigate to success page
+            if (!response.ok) return 'registration failed';
             navigate('/success');
             return null;
         } catch (error) {
-            console.error('Registration error:', error);
-            return 'An error occurred during registration';
+            return 'error during registration';
         }
     };
 
